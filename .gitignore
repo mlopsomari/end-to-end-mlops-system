@@ -1,0 +1,21 @@
+# PyCharm
+.idea/
+
+# Virtual environment
+venv/
+.env/
+env/
+
+# Environment variables / secrets
+.env
+*.env
+secrets.py
+*.pem
+
+# folders
+prod_create/
+prod_trigger/
+local_scripts/
+.metaflow/
+
+

@@ -1,0 +1,22 @@
+[project]
+name = "continous-training"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "awscurl>=0.36",
+    "boto3>=1.40.67",
+    "evidently>=0.7.16",
+    "matplotlib>=3.10.3",
+    "metaflow>=2.19.5",
+    "metaflow-card-html>=1.0.3",
+    "mlflow==3.8.1",
+    "numpy<2",
+    "pandas>=2.3.1",
+    "psycopg2-binary>=2.9.11",
+    "pyarrow>=12.0.0,<16.0.0",
+    "python-dotenv>=1.1.1",
+    "scikit-learn==1.7.2",
+    "seaborn>=0.13.2",
+    "sqlalchemy>=2.0.44",
+]

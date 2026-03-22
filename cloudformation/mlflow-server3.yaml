@@ -1,0 +1,394 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'MLflow infrastructure with VPC, EC2, RDS PostgreSQL, and S3 artifact store'
+
+Parameters:
+  DBUsername:
+    Description: Database master username
+    Type: String
+    MinLength: 1
+    MaxLength: 16
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters
+    Default: mlflowuser
+
+  DBPassword:
+    Description: Database master password
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    MaxLength: 41
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: Must contain only alphanumeric characters (minimum 8 characters)
+
+  DBName:
+    Description: MLflow database name
+    Type: String
+    Default: mlflowdb
+    MinLength: 1
+    MaxLength: 64
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+
+  MyIPAddress:
+    Description: Your IP address for SSH and HTTP access (format x.x.x.x/32)
+    Type: String
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    ConstraintDescription: Must be a valid IP CIDR range of the form x.x.x.x/x
+
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id
+    Description: Latest Ubuntu 22.04 AMI ID from SSM Parameter Store
+
+Resources:
+
+  EC2KeyPair:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyName: 'continous-training'
+  # VPC Configuration
+  MLflowVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: MLflow-VPC
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: MLflow-IGW
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MLflowVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Subnets in same AZ
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MLflowVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: MLflow-Public-Subnet
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MLflowVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: MLflow-Private-Subnet-1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MLflowVPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: MLflow-Private-Subnet-2
+
+  # Route Table
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MLflowVPC
+      Tags:
+        - Key: Name
+          Value: MLflow-Public-RT
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  # S3 Artifact Store Bucket
+  MLflowArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'mlflow-artifacts-${AWS::AccountId}-${AWS::Region}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: MLflow-Artifact-Store
+
+  # Security Groups
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for MLflow EC2 instance
+      VpcId: !Ref MLflowVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref MyIPAddress
+          Description: SSH access from your IP
+        - IpProtocol: tcp
+          FromPort: 5000
+          ToPort: 5000
+          CidrIp: !Ref MyIPAddress
+          Description: MLflow UI access from your IP
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+      Tags:
+        - Key: Name
+          Value: MLflow-EC2-SG
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for MLflow RDS instance
+      VpcId: !Ref MLflowVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+          Description: PostgreSQL access from EC2
+      Tags:
+        - Key: Name
+          Value: MLflow-RDS-SG
+
+  # RDS Subnet Group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for MLflow RDS
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: MLflow-DB-Subnet-Group
+
+  # RDS PostgreSQL Instance
+  MLflowDatabase:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: mlflow-backend-db
+      DBName: !Ref DBName
+      Engine: postgres
+      EngineVersion: '18.3'
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: 20
+      StorageType: gp2
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      AvailabilityZone: !Select [0, !GetAZs '']
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 7
+      Tags:
+        - Key: Name
+          Value: MLflow-Backend-DB
+
+  # IAM Role for EC2
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: MLflow-EC2-Role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: S3ArtifactStoreAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource:
+                  - !GetAtt MLflowArtifactBucket.Arn
+                  - !Sub '${MLflowArtifactBucket.Arn}/*'
+      Tags:
+        - Key: Name
+          Value: MLflow-EC2-Role
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: MLflow-EC2-Instance-Profile
+      Roles:
+        - !Ref EC2InstanceRole
+
+  # EC2 Instance
+  MLflowEC2Instance:
+    Type: AWS::EC2::Instance
+    DependsOn: MLflowDatabase
+    Properties:
+      InstanceType: t3.small
+      ImageId: !Ref LatestAmiId
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+      Tags:
+        - Key: Name
+          Value: MLflow-Server
+      KeyName: !Ref EC2KeyPair
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          
+          # Update system
+          sudo apt-get update
+          sudo apt-get upgrade -y
+          
+          # Install dependencies
+          sudo apt-get install -y build-essential python3.12-venv zlib1g-dev unzip postgresql-client
+          
+          # Install AWS CLI
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+          unzip /tmp/awscliv2.zip -d /tmp
+          sudo /tmp/aws/install
+          rm -rf /tmp/awscliv2.zip /tmp/aws
+          
+          # Create Python virtual environment
+          python3 -m venv /home/ubuntu/.venv
+          chown -R ubuntu:ubuntu /home/ubuntu/.venv
+          
+          # Install Python packages
+          sudo -u ubuntu bash -c "source /home/ubuntu/.venv/bin/activate && pip install --upgrade pip && pip install mlflow boto3 psycopg2-binary"
+          
+          # Create database
+          export PGPASSWORD='${DBPassword}'
+          psql -h ${MLflowDatabase.Endpoint.Address} -U ${DBUsername} -d postgres -c "CREATE DATABASE ${DBName};" || echo "Database may already exist"
+          unset PGPASSWORD
+          
+          # Create systemd service for MLflow
+          cat > /etc/systemd/system/mlflow.service <<EOF
+          [Unit]
+          Description=MLflow Tracking Server
+          After=network.target
+          
+          [Service]
+          Type=simple
+          User=ubuntu
+          WorkingDirectory=/home/ubuntu
+          Environment="PATH=/home/ubuntu/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+          ExecStart=/home/ubuntu/.venv/bin/mlflow server \
+            --host 0.0.0.0 \
+            --port 5000 \
+            --allowed-hosts "localhost,127.0.0.1,localhost:5000,127.0.0.1:5000, ${!PRIVATE_DNS}" \
+            --cors-allowed-origins "http://localhost:5000,http://127.0.0.1:5000" \
+            --backend-store-uri postgresql://${DBUsername}:${DBPassword}@${MLflowDatabase.Endpoint.Address}:5432/${DBName} \
+            --default-artifact-root s3://${MLflowArtifactBucket}/
+          Restart=always
+          RestartSec=10
+          
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          
+          # Start MLflow service
+          systemctl daemon-reload
+          systemctl enable mlflow
+          systemctl start mlflow
+          
+          # Create a helper script for manual start
+          cat > /home/ubuntu/start_mlflow.sh <<EOF
+          #!/bin/bash
+          source /home/ubuntu/.venv/bin/activate
+          mlflow server \
+            --host 0.0.0.0 \
+            --port 5000 \
+            --backend-store-uri postgresql://${DBUsername}:${DBPassword}@${MLflowDatabase.Endpoint.Address}:5432/${DBName} \
+            --default-artifact-root s3://${MLflowArtifactBucket}/
+          EOF
+          
+          chmod +x /home/ubuntu/start_mlflow.sh
+          chown ubuntu:ubuntu /home/ubuntu/start_mlflow.sh
+          
+          echo "MLflow setup completed!" > /home/ubuntu/setup_complete.txt
+
+Outputs:
+  KeyPair:
+    Description: >
+      Key Pair ID associated with the EC2 instance that will host the MLflow server. 
+      You can use this value to retrieve the private key from the Systems Manager Parameter Store.
+    Value: !GetAtt 'EC2KeyPair.KeyPairId'
+
+  MLflowEC2PublicIP:
+    Description: Public IP address of MLflow EC2 instance
+    Value: !GetAtt MLflowEC2Instance.PublicIp
+    Export:
+      Name: !Sub '${AWS::StackName}-EC2-PublicIP'
+
+  MLflowEC2PublicDNS:
+    Description: Public DNS of MLflow EC2 instance
+    Value: !GetAtt MLflowEC2Instance.PublicDnsName
+    Export:
+      Name: !Sub '${AWS::StackName}-EC2-PublicDNS'
+
+  MLflowURL:
+    Description: MLflow UI URL
+    Value: !Sub 'http://${MLflowEC2Instance.PublicIp}:5000'
+
+  RDSEndpoint:
+    Description: RDS PostgreSQL endpoint
+    Value: !GetAtt MLflowDatabase.Endpoint.Address
+    Export:
+      Name: !Sub '${AWS::StackName}-RDS-Endpoint'
+
+  S3ArtifactBucket:
+    Description: S3 bucket for MLflow artifacts
+    Value: !Ref MLflowArtifactBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-S3-Bucket'
+
+  VPCId:
+    Description: VPC ID
+    Value: !Ref MLflowVPC
+    Export:
+      Name: !Sub '${AWS::StackName}-VPC-ID'
+
+  DatabaseName:
+    Description: Database name
+    Value: !Ref DBName
+
+  SSHCommand:
+    Description: SSH command to connect to EC2 instance
+    Value: !Sub 'ssh ubuntu@${MLflowEC2Instance.PublicIp}'
