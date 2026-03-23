@@ -11,61 +11,6 @@ from sklearn.model_selection import train_test_split
 
 configure_logging()
 
-
-def download_penguins() -> str | None:
-    """
-    Download the penguins dataset and store it in 'continuous_training/data'.
-
-    Returns:
-        str: Absolute file path to the saved CSV if successful or already present.
-        None: If the download/save process failed.
-    """
-
-
-
-
-
-    # Determine project root relative to this file
-    project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    )
-    data_dir = os.path.join(project_root, "data")
-    file_path = os.path.join(data_dir, "penguins.csv")
-
-    logging.info("Checking for existing dataset in %s", data_dir)
-
-    # If dataset already exists, return immediately
-    if os.path.exists(file_path):
-        logging.info("Dataset already exists at %s", file_path)
-        return file_path
-
-    try:
-        logging.info("Downloading the penguins dataset...")
-        penguins = sns.load_dataset("penguins")
-
-        if penguins is None or penguins.empty:
-            raise ValueError("Downloaded dataset is empty or invalid.")
-
-        os.makedirs(data_dir, exist_ok=True)
-
-        logging.info("Saving dataset to %s", file_path)
-        penguins.to_csv(file_path, index=False)
-
-        logging.info("Download and save successful!")
-        return file_path # ✅ return the full path here
-
-    except Exception as e:
-        logging.error("Failed to download or save penguins dataset: %s", e, exc_info=True)
-
-        # Optional fallback: use existing data if available
-        if os.path.exists(file_path):
-            logging.warning("Using previously saved dataset at %s", file_path)
-            return file_path
-
-        logging.critical("No valid dataset available.")
-        return None  # ❌ return None explicitly if it failed
-
-
 def validate_dataset (data: pd.DataFrame) -> None:
     """
     Validate the `self.data` DataFrame before transforming it.
