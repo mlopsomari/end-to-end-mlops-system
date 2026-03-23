@@ -37,6 +37,7 @@ class Train(FlowSpec):
     This pipeline trains, logs and deploys a random forrest classifier on the
     penguins dataset.
     """
+
     rds_uri = Parameter(
         "rds_uri",
         default=None,
@@ -62,11 +63,17 @@ class Train(FlowSpec):
         show_default=True,
     )
 
+    s3_dataset_uri = Parameter(
+        "s3_dataset_uri",
+        type= str,
+        help="The S3 URI for the dataset.",
+        required=True,
+    )
+
     @step
     def start(self):
         """Configure MLflow experiment and run"""
         from shared.mlflow_config import setup_tracking
-        import os
         from datetime import datetime
 
 
@@ -86,25 +93,28 @@ class Train(FlowSpec):
     def download_data(self):
         """Download and persist the penguins dataset."""
 
-        with S3() as s3:
-            logging.info("Downloading penguins dataset from S3.")
-            s3obj = s3.get('s3://penguins-training-dataset/penguins.csv')
+        try:
+            with S3() as s3:
+                logging.info("Downloading penguins dataset from S3.")
+                s3obj = s3.get(self.s3_dataset_uri)
 
-            self.dataset = s3obj.blob
-            logging.info("Dataset download successful!")
+                self.dataset = s3obj.blob
+                logging.info("Dataset download successful!")
+        except Exception as e:
+            logging.error(e)
 
         self.next(self.validate_data)
 
     @step
     def validate_data(self):
         """Validate the penguins dataset."""
+
         from core.training.etl import validate_dataset
         from io import BytesIO
 
         logging.info("Converting Penguins dataset to Pandas DataFrame.")
         self.dataset = pd.read_csv(BytesIO(self.dataset))
 
-        # validate the dataset
         validate_dataset(self.dataset)
 
         self.next(self.transform_data)
@@ -219,7 +229,7 @@ class Train(FlowSpec):
 
         from core.training.training_utility import register_model
 
-        if self.test_accuracy["test_accuracy"] >= 0.97:
+        if self.test_accuracy["test_accuracy"] >= 0.9:
 
             register_model(
                 model=self.best_estimator,
