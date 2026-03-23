@@ -1,4 +1,4 @@
-# End-to-end MLOps System
+# End-to-end MLOps System on AWS
 
 ![Alt text](images/MLOps_System_Diagram.jpg)
 
