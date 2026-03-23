@@ -5,7 +5,7 @@ from sklearn.compose import  ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
 import numpy as np
 import mlflow
-from sklearn.model_selection import cross_val_score, train_test_split
+from sklearn.model_selection import cross_val_score
 from sklearn.metrics import accuracy_score
 from sklearn.base import clone, BaseEstimator
 from typing import Any, Union
@@ -56,6 +56,7 @@ def build_sklearn_pipeline(X_train: Union[pd.DataFrame, np.ndarray]) -> Pipeline
     return pipeline
 
 def build_param_combinations():
+    """Creates a set of random forest model parameters"""
 
     logging.info(f"Generating parameter combinations...")
 
@@ -93,6 +94,7 @@ def run_cross_validation(params: dict[str, Any],
                          mlflow_tracking_uri: str,
                          experiment_name: str,
                         ) -> dict[str, Any]:
+    """Runs cross validation for given parameters and tracks training with MLflow"""
 
 
     trial_id = params.pop("trial_id")
@@ -123,6 +125,7 @@ def run_cross_validation(params: dict[str, Any],
     }
 
 def select_best_model(trial_results_list: list[dict[str, Any]]) -> dict[str, Any]:
+    """Select best model based on cross validation score"""
     logging.info("Collecting results from all trials...")
 
     # Sort results by performance (descending)
@@ -142,6 +145,7 @@ def train_model(
     X_train: Union[pd.DataFrame, np.ndarray],
     y_train: Union[pd.Series, np.ndarray],
 ):
+    """Train a model with given parameters"""
     pipeline = clone(base_pipeline)
     pipeline.set_params(**params)
     pipeline.fit(X_train, y_train)
@@ -152,6 +156,7 @@ def evaluate_model(best_estimator: BaseEstimator,
                    X_test: Union[pd.DataFrame, np.ndarray],
                    y_test: Union[pd.Series, np.ndarray],
 ) -> dict[str, int]:
+    """Evaluate a model"""
 
     logging.info("Evaluating best model...")
 
@@ -172,6 +177,8 @@ def register_model(
         mlflow_experiment_name: str,
         dataset: pd.DataFrame,
 ) -> None:
+    """Register a model with given parameters"""
+
     mlflow.set_tracking_uri(mlflow_tracking_uri)
     mlflow.set_experiment(mlflow_experiment_name)
 
