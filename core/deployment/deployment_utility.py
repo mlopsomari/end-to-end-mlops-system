@@ -1,5 +1,3 @@
-import os
-import mlflow
 import logging
 from mlflow import MlflowClient
 from mlflow.deployments import get_deploy_client
@@ -11,7 +9,7 @@ from datetime import datetime, timezone
 configure_logging()
 
 
-def deploy_to_sagemaker(mlflow_tracking_uri, sagemaker_role):
+def deploy_to_sagemaker(mlflow_tracking_uri, sagemaker_role, ecr_image_uri):
     """Deploy the model to SageMaker.
 
     This function creates a new SageMaker model, endpoint configuration, and
@@ -40,12 +38,9 @@ def deploy_to_sagemaker(mlflow_tracking_uri, sagemaker_role):
         "instance_type": "ml.c5.large",
         "instance_count": 1,
         "execution_role_arn": sagemaker_role,
-        "image_url": "<ecr-image>",
+        "image_url": ecr_image_uri,
         "synchronous": True,
-        # We want to archive resources associated with the endpoint that become
-        # inactive as the result of updating an existing deployment.
         "archive": True,
-        # Notice how we are storing the version number as a tag.
         "tags": {"version": model_version.version},
     }
 
@@ -61,9 +56,8 @@ def deploy_to_sagemaker(mlflow_tracking_uri, sagemaker_role):
     deployment_name = "PenguinsEndpoint"
 
     try:
-        # Let's return the deployment with the name of the endpoint we want to
-        # create. If the endpoint doesn't exist, this function will raise an
-        # exception.
+        # Let's return the deployment with the name of the deployment we want to
+        # create. If the deployment doesn't exist raise an exception.
         try:
 
             logging.info("Checking for existing deployment:...")
@@ -72,7 +66,7 @@ def deploy_to_sagemaker(mlflow_tracking_uri, sagemaker_role):
 
             logging.info("Existing deployment found")
 
-            deployment = deployment_client.update_deployment(
+            deployment_client.update_deployment(
                 name=deployment_name,
                 model_uri=model_uri,
                 flavor="python_function",
@@ -82,7 +76,7 @@ def deploy_to_sagemaker(mlflow_tracking_uri, sagemaker_role):
 
             logging.info("No running deployment found, creating new deployment...")
 
-            deployment = deployment_client.create_deployment(
+            deployment_client.create_deployment(
                 name=deployment_name,
                 model_uri=model_uri,
                 flavor="python_function",
