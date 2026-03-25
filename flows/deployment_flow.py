@@ -51,6 +51,14 @@ class Deploy(FlowSpec):
         help="The SageMaker Role ARN",
     )
 
+    ecr_image_uri = Parameter(
+        "ecr_image_uri",
+        default=None,
+        type= str,
+        required=True,
+        help="The ECR Image URI",
+    )
+
     @step
     def start(self):
         import mlflow
@@ -59,7 +67,11 @@ class Deploy(FlowSpec):
         mlflow.set_tracking_uri(self.mlflow_tracking_uri)
 
         logging.info(msg="Deploying model to Sagemaker...")
-        self.deployment = deploy_to_sagemaker(self.mlflow_tracking_uri, self.sagemaker_role)
+
+        self.deployment = deploy_to_sagemaker(self.mlflow_tracking_uri,
+                                              self.sagemaker_role,
+                                              self.ecr_image_uri)
+
         logging.info(msg="Deployment successful!!!")
 
         self.next(self.end)
