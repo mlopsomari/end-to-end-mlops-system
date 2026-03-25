@@ -54,7 +54,7 @@ class Traffic(FlowSpec):
 
     @step
     def start(self):
-        """ """
+        """Determine the flow type specified on command line"""
         if self.flow_type not in ["traffic", "labelling"]:
             raise ValueError("Traffic flow type must be traffic or labelling")
 
@@ -68,10 +68,11 @@ class Traffic(FlowSpec):
     @step
     def apply_drift(self):
 
+        """Apply the drift to training data"""
+
         if self.flow_type == "traffic":
 
             from core.monitoring.traffic_utility import apply_drift
-
 
             self.drift_data = apply_drift(self.mlflow_tracking_uri)
 
@@ -80,6 +81,7 @@ class Traffic(FlowSpec):
 
     @step
     def traffic(self):
+        """Send traffic to Sagemaker endpoint"""
 
         if self.flow_type == "traffic":
 
@@ -95,6 +97,8 @@ class Traffic(FlowSpec):
 
     @step
     def labelling(self):
+        """Retrieve inference data from Sagemaker endpoint and generate
+        ground truth labels"""
 
         from core.monitoring.labelling_utility import retrieve_data, label_data
 
