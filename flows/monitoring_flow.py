@@ -7,10 +7,8 @@ from metaflow import (
     pypi_base,
     resources,
     step,
-    S3,
 )
 import logging
-from datetime import datetime
 from shared.utils import configure_logging
 from mlflow.tracking.client import MlflowClient
 
@@ -35,6 +33,8 @@ configure_logging()
                 'boto3': '1.40.67'
                   })
 class Monitoring(FlowSpec):
+    """Flow that performs drift evaluation using evidently on the deployed
+    model and tags the model with the results"""
 
     mlflow_tracking_uri = Parameter(
         "mlflow_tracking_uri",
@@ -50,6 +50,13 @@ class Monitoring(FlowSpec):
         type=str,
     )
 
+    s3_uri = Parameter(
+        "s3_uri",
+        default=None,
+        required=True,
+        type=str,
+    )
+
     @step
     def start(self):
 
@@ -57,6 +64,7 @@ class Monitoring(FlowSpec):
 
     @step
     def retrieve_data(self):
+        """Retrieve data from AWS RDS"""
 
         from core.monitoring.monitoring_utility import retrieve_data
 
@@ -68,6 +76,7 @@ class Monitoring(FlowSpec):
 
     @step
     def create_evidently_data(self):
+        """Create evidently dataset using training data and inference data from AWS RDS"""
 
         import mlflow
         from core.monitoring.monitoring_utility import create_datasets
@@ -84,6 +93,7 @@ class Monitoring(FlowSpec):
     @card(type='html')
     @step
     def report(self):
+        """Generate evidently report and save it to S3"""
         from core.monitoring.monitoring_utility import run_report, get_evidently_html
         import tempfile
         import json
@@ -110,24 +120,24 @@ class Monitoring(FlowSpec):
             with tempfile.NamedTemporaryFile(suffix=".json", mode="w", delete=False) as tmp:
                 tmp_path = tmp.name
 
-            # Write report to temp file
-            eval_report.save_json(tmp_path)
+                # Write report to temp file
+                eval_report.save_json(tmp_path)
 
-            # Extract drift metrics from the saved JSON before uploading
-            with open(tmp_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+                # Extract drift metrics from the saved JSON before uploading
+                with open(tmp_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
 
-            self.drift_threshold = data["metrics"][0]["config"]["drift_share"]
-            self.drift_value = data["metrics"][0]["value"]["share"]
-            self.drift = (
+                self.drift_threshold = data["metrics"][0]["config"]["drift_share"]
+                self.drift_value = data["metrics"][0]["value"]["share"]
+                self.drift = (
                     self.drift_threshold is not None
                     and self.drift_value is not None
                     and self.drift_value >= self.drift_threshold
-            )
+                )
 
-            # Upload to S3
-            with S3(s3root='s3://continous-training-103441327704') as s3:
-                s3.put_files([(s3_key, tmp_path)])
+                # Upload to S3
+                with S3(s3root=self.s3_uri) as s3:
+                    s3.put_files([(s3_key, tmp_path)])
 
         finally:
             if tmp_path and os.path.exists(tmp_path):
@@ -137,6 +147,7 @@ class Monitoring(FlowSpec):
 
     @step
     def log_drift(self):
+        """Tag model with drift information"""
 
         import mlflow
         from datetime import datetime, timezone
