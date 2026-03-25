@@ -198,7 +198,7 @@ class RetrainingFlow(FlowSpec):
 
     @step
     def end(self):
-        """End training flow."""
+        """End retraining flow."""
         logging.info("Retraining pipeline completed.")
 
 
