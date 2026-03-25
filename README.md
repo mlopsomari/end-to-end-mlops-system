@@ -12,7 +12,7 @@ Monitoring: Evidently AI
 
 Orchestration: Metaflow
 
-The system has been designed run entirely in the cloud utilising AWS services as illustrated in the above diagram.
+The system has been designed to run entirely in the cloud utilising AWS services as illustrated in the above diagram.
 
 ## Training Pipeline
 
