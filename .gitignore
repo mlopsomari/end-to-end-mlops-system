@@ -28,6 +28,7 @@ prod_create/
 prod_trigger/
 local_scripts/
 .metaflow/
+flows/data
 
 
 # OS files
