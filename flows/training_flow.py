@@ -38,7 +38,7 @@ class Train(FlowSpec):
     penguins dataset.
     """
 
-    rds_uri = Parameter(
+    data_collection_uri = Parameter(
         "rds_uri",
         default=None,
         type= str,
@@ -236,7 +236,7 @@ class Train(FlowSpec):
                 params=self.best_model["parameters"],
                 test_accuracy=self.test_accuracy["test_accuracy"],
                 parent_run_id=self.parent_run_id,
-                pyfunc_model=PyfuncModel(data_collection_uri=self.rds_uri, data_capture=True),
+                pyfunc_model=PyfuncModel(data_collection_uri=self.data_collection_uri, data_capture=True),
                 mlflow_tracking_uri=self.mlflow_tracking_uri,
                 mlflow_experiment_name=self.mlflow_experiment_name,
                 dataset=self.dataset,

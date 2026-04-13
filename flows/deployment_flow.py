@@ -48,7 +48,9 @@ class Deploy(FlowSpec):
         default=None,
         type= str,
         required=True,
-        help="The SageMaker Role ARN",
+        help="""The name of an IAM role granting the SageMaker 
+        service permissions to access the specified Docker image
+        and S3 bucket containing MLflow model artifacts""",
     )
 
     ecr_image_uri = Parameter(

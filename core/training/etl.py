@@ -16,8 +16,8 @@ def validate_dataset (data: pd.DataFrame) -> None:
     Validate the `self.data` DataFrame before transforming it.
 
     Checks performed:
-    1. `self.data` is a pandas DataFrame.
-    2. `self.data` contains all required columns.
+    1. `checks if data` is a pandas DataFrame.
+    2. `check if data` contains all required columns.
             """
     required_cols = {
         "species",

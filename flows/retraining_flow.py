@@ -49,6 +49,17 @@ class RetrainingFlow(FlowSpec):
         required=True,
         default=None,
         type=str,
+        help="""The name of an IAM role granting the SageMaker 
+            service permissions to access the specified Docker image
+            and S3 bucket containing MLflow model artifacts""",
+    )
+
+    ecr_image_uri = Parameter(
+        "ecr_image_uri",
+        default=None,
+        type=str,
+        required=True,
+        help="The ECR Image URI",
     )
 
     @step
@@ -191,7 +202,7 @@ class RetrainingFlow(FlowSpec):
             mlflow.set_experiment("continous-training")
 
             logging.info("Updating deployed model...")
-            self.deployment = deploy_to_sagemaker(self.mlflow_tracking_uri, self.sagemaker_role)
+            self.deployment = deploy_to_sagemaker(self.mlflow_tracking_uri, self.sagemaker_role, self.ecr_image_uri)
             logging.info("Deployment successful!!!")
 
         self.next(self.end)
